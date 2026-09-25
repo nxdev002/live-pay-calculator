@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Live Total Pay Calculator (Bidirectional)</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+
+body {
+margin: 0;
+padding: 40px 20px;
+min-height: 100vh;
+display: flex;
+justify-content: center;
+align-items: flex-start;
+background: #f3f5f7;
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+color: #1f2933;
+}
+
+.calculator {
+width: 100%;
+max-width: 500px;
+padding: 32px;
+background: #ffffff;
+border: 1px solid #e1e6eb;
+border-radius: 16px;
+box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+}
+
+h2 {
+margin: 0 0 28px;
+font-size: 26px;
+line-height: 1.25;
+font-weight: 700;
+color: #17202a;
+}
+
+label {
+display: block;
+margin: 0 0 8px;
+font-size: 14px;
+line-height: 1.4;
+font-weight: 600;
+color: #4b5563;
+}
+
+input {
+width: 100%;
+height: 48px;
+margin: 0 0 20px;
+padding: 0 14px;
+border: 1px solid #d1d9e0;
+border-radius: 8px;
+background: #ffffff;
+color: #17202a;
+font-family: inherit;
+font-size: 16px;
+outline: none;
+transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input:hover {
+border-color: #aeb8c2;
+}
+
+input:focus {
+border-color: #2563eb;
+box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+input[type="number"] {
+appearance: textfield;
+-moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+margin: 0;
+opacity: 1;
+}
+
+h3 {
+margin: 8px 0 0;
+padding: 20px;
+border-radius: 12px;
+background: #f7f9fb;
+border: 1px solid #e5e9ed;
+text-align: center;
+font-size: 14px;
+line-height: 1.6;
+font-weight: 600;
+color: #6b7280;
+}
+
+#totalPay {
+display: flex;
+flex-direction: column;
+gap: 4px;
+margin-top: 4px;
+color: #111827;
+font-size: 28px;
+line-height: 1.4;
+font-weight: 700;
+}
+
+#totalPay .aud-total {
+font-size: 28px;
+line-height: 1.4;
+font-weight: 700;
+color: #111827;
+}
+
+#totalPay .exchange-rate {
+font-size: 14px;
+line-height: 1.4;
+font-weight: 500;
+color: #6b7280;
+}
+
+#totalPay .php-total {
+font-size: 22px;
+line-height: 1.4;
+font-weight: 700;
+color: #111827;
+}
+
+@media (max-width: 600px) {
+body {
+padding: 20px 12px;
+}
+
+.calculator {
+  padding: 24px 20px;
+  border-radius: 12px;
+}
+
+h2 {
+  font-size: 22px;
+  margin-bottom: 24px;
+}
+
+#totalPay .aud-total {
+  font-size: 24px;
+}
+
+#totalPay .php-total {
+  font-size: 20px;
+}
+}
+</style>
+
+</head>
+<body>
+
+<div class="calculator">
+
+  <h2>Live Total Pay Calculator</h2>
+
+<label for="timeWorked">Time Worked (HH:MM:SS):</label> <input type="text" id="timeWorked" value="150:20:20">
+
+<label for="decimalHours">Decimal Hours:</label> <input type="number" id="decimalHours" value="0.00" step="0.00001" min="0">
+
+<label for="hourlyRate">Hourly Rate (AUD):</label> <input type="number" id="hourlyRate" value="10" step="0.01">
+
+  <h3>
+    Total Pay
+    <span id="totalPay">0.00</span>
+  </h3>
+
+</div>
+
+<script>
+const timeInput = document.getElementById('timeWorked');
+const decimalInput = document.getElementById('decimalHours');
+const rateInput = document.getElementById('hourlyRate');
+const totalPayEl = document.getElementById('totalPay');
+
+let updating = false;
+let audToPhpRate = 0;
+
+/* -----------------------------
+   FX RATE (AUD → PHP)
+------------------------------*/
+async function loadExchangeRate() {
+  try {
+    const res = await fetch("https://open.er-api.com/v6/latest/AUD");
+    const data = await res.json();
+    audToPhpRate = data.rates.PHP;
+
+    console.log("AUD → PHP rate:", audToPhpRate);
+
+    const totalHours = parseFloat(decimalInput.value);
+
+    if (!isNaN(totalHours)) {
+      updateDisplay(totalHours);
+    }
+  } catch (err) {
+    console.error("FX load failed:", err);
+    audToPhpRate = 0;
+  }
+}
+
+loadExchangeRate();
+setInterval(loadExchangeRate, 60 * 60 * 1000);
+
+/* -----------------------------
+   TIME HELPERS
+------------------------------*/
+function hhmmssToDecimal(timeStr) {
+  const parts = timeStr.split(':').map(Number);
+
+  if (parts.length !== 3 || parts.some(isNaN)) {
+    return NaN;
+  }
+
+  const [hours, minutes, seconds] = parts;
+
+  return (hours * 3600 + minutes * 60 + seconds) / 3600;
+}
+
+function decimalToHHMMSS(decimalHours) {
+  const totalSeconds = Math.round(decimalHours * 3600);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/* -----------------------------
+   UI UPDATE (shared logic)
+------------------------------*/
+function updateDisplay(totalHours) {
+  const rate = parseFloat(rateInput.value || 0);
+
+  const totalPay = totalHours * rate;
+  const phpPay = audToPhpRate ? totalPay * audToPhpRate : null;
+
+  totalPayEl.innerHTML = `
+    <span class="aud-total">${totalPay.toFixed(2)} AUD</span>
+    ${phpPay !== null ? `<span class="exchange-rate">1 AUD = ${audToPhpRate.toFixed(6)} PHP</span>` : ""}
+    ${phpPay !== null ? `<span class="php-total">${phpPay.toFixed(2)} PHP</span>` : ""}
+  `;
+}
+
+/* -----------------------------
+   CALC FROM TIME
+------------------------------*/
+function calculatePayFromTime() {
+  if (updating) {
+    return;
+  }
+
+  updating = true;
+
+  const totalHours = hhmmssToDecimal(timeInput.value);
+
+  if (isNaN(totalHours)) {
+    decimalInput.value = '';
+    totalPayEl.textContent = 'Invalid time';
+  } else {
+    decimalInput.value = totalHours.toFixed(5);
+    updateDisplay(totalHours);
+  }
+
+  updating = false;
+}
+
+/* -----------------------------
+   CALC FROM DECIMAL
+------------------------------*/
+function calculatePayFromDecimal() {
+  if (updating) {
+    return;
+  }
+
+  updating = true;
+
+  const totalHours = parseFloat(decimalInput.value);
+
+  if (isNaN(totalHours)) {
+    timeInput.value = '';
+    totalPayEl.textContent = 'Invalid input';
+  } else {
+    timeInput.value = decimalToHHMMSS(totalHours);
+    updateDisplay(totalHours);
+  }
+
+  updating = false;
+}
+
+/* -----------------------------
+   EVENTS
+------------------------------*/
+timeInput.addEventListener('input', calculatePayFromTime);
+
+decimalInput.addEventListener('input', calculatePayFromDecimal);
+
+rateInput.addEventListener('input', () => {
+  const totalHours = parseFloat(decimalInput.value);
+
+  if (!isNaN(totalHours)) {
+    updateDisplay(totalHours);
+  }
+});
+
+/* -----------------------------
+   INIT
+------------------------------*/
+calculatePayFromTime();
+</script>
+
+</body>
+</html>
